@@ -21,7 +21,7 @@ from collections import defaultdict
 from nltk.corpus import stopwords
 import re
 from nltk.stem.wordnet import WordNetLemmatizer
-
+from nltk.tokenize import RegexpTokenizer
 from sklearn.feature_extraction import DictVectorizer
 import nltk
 
@@ -41,9 +41,11 @@ def get_user_tweets(user_id):
         dict = statuses[i].AsDict()
         if statuses[i].GetRetweeted() or statuses[i].GetInReplyToUserId() != None or dict['lang'] != 'en':
             continue
+            '''corpora/wordnet
         for key in dict.keys():
-            if key != 'text':
+            if key not in ['text', 'created_at', 'id']:
                 dict.pop(key)
+            '''
         dictionaries.append(dict)
     if len(dict) == 0:
         return None
@@ -51,8 +53,13 @@ def get_user_tweets(user_id):
 
 def get_words(text):
     """returns list of words"""
-    from nltk.tokenize import RegexpTokenizer
-    tokenizer = RegexpTokenizer('\w+|[^\w\s]+')
+    print text
+    refs = re.findall('http://\S*', text)
+    for ref in refs:
+        print ref
+        text = text.replace(ref,'')
+    print text
+    tokenizer = RegexpTokenizer('\w+')#|[^\w\s]+')
     return tokenizer.tokenize(text)
 
 def get_tokens(words):
@@ -63,6 +70,7 @@ def get_tokens(words):
         words[i] = re.sub(ur"\W", "", words[i], flags=re.U)
         wnl.lemmatize(words[i])
     tokens = [i for i in words if i not in stopwords.words('english')]
+    print tokens
     return tokens
 
 def get_tweet_tokens(tweet):
@@ -93,9 +101,15 @@ def collect_users_tokens(df_users):
     tweets.close()
     '''
     users_tokens = []
-    nltk.download()
+    #nltk.download_shell('q')
     for i in range(0, len(users_tweets)):
-        users_tokens.append(get_tweet_tokens(users_tweets[i]['text']))
+        tokens = []
+        for j in range(0, len(users_tweets[i])):
+            tokens.extend(get_tweet_tokens(users_tweets[i][j]['text']))
+        tokenDict = dict((x, tokens.count(x)) for x in set(tokens))
+        print tokenDict
+        users_tokens.append(tokenDict)
+
     return users, users_tokens
 
 TRAINING_SET_URL = "twitter_train.txt"
@@ -119,5 +133,5 @@ api = twitter.Api(consumer_key=CONSUMER_KEY,
 users, users_tokens = collect_users_tokens(df_users)
 print "Transforming to matrix.."
 v = DictVectorizer()
-#vs = v.fit_transform(users_tokens)
+vs = v.fit_transform(users_tokens)
 
