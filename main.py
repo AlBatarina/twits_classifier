@@ -5,6 +5,8 @@ reload(sys)
 sys.setdefaultencoding('Windows-1251')
 default_encoding = sys.getdefaultencoding()
 import pandas as pd
+import time
+import cPickle as pck
 import numpy as np
 import pylab as pl
 import mpl_toolkits.basemap as bm
@@ -15,11 +17,91 @@ import dateutil
 import csv
 import json
 import matplotlib.pyplot as plt
+from collections import defaultdict
+from nltk.corpus import stopwords
+import re
+from nltk.stem.wordnet import WordNetLemmatizer
+
+from sklearn.feature_extraction import DictVectorizer
+import nltk
+
+def get_user_tweets(user_id):
+    """returns list of tweets as dicts"""
+    waitTime = api.GetSleepTime("statuses/user_timeline")
+    if waitTime != 0:
+        print "Waiting ", waitTime, "seconds"
+    time.sleep(waitTime)
+    try:
+        statuses = api.GetUserTimeline(user_id, count=200)
+    except:
+        return None
+    print len(statuses)
+    dictionaries = []
+    for i in range(0,len(statuses)):
+        dict = statuses[i].AsDict()
+        if statuses[i].GetRetweeted() or statuses[i].GetInReplyToUserId() != None or dict['lang'] != 'en':
+            continue
+        for key in dict.keys():
+            if key != 'text':
+                dict.pop(key)
+        dictionaries.append(dict)
+    if len(dict) == 0:
+        return None
+    return dictionaries
+
+def get_words(text):
+    """returns list of words"""
+    from nltk.tokenize import RegexpTokenizer
+    tokenizer = RegexpTokenizer('\w+|[^\w\s]+')
+    return tokenizer.tokenize(text)
+
+def get_tokens(words):
+    """returns list of tokens"""
+    wnl = WordNetLemmatizer()
+    for i in range(0, len(words)):
+        words[i] = words[i].lower()
+        words[i] = re.sub(ur"\W", "", words[i], flags=re.U)
+        wnl.lemmatize(words[i])
+    tokens = [i for i in words if i not in stopwords.words('english')]
+    return tokens
+
+def get_tweet_tokens(tweet):
+    return get_tokens(get_words(tweet))
+
+def collect_users_tokens(df_users):
+    """returns users list and list of user dicts. Each dict contains frequence of user tokens"""
+    print "Collecting data.."
+    users_tweets = []
+    users = []
+    for i in range(0, len(df_users)):
+        print i, df_users.at[i, 'class']
+        dictList = get_user_tweets(df_users.at[i, 'user_id'])
+        if dictList is not None:
+            users.append(df_users.at[i, 'user_id'])
+            users_tweets.append(dictList)
+    print users_tweets[0]
+    '''
+    print "Saving dictionaries.."
+    tweets = open("./tweets", 'w')
+    pck.dump(users_tweets,tweets)
+    tweets.close()
+
+    print "Opening dictionaries.."
+    raw_input()
+    tweets = open("./tweets", 'r')
+    users_tweets = pck.load(tweets)
+    tweets.close()
+    '''
+    users_tokens = []
+    nltk.download()
+    for i in range(0, len(users_tweets)):
+        users_tokens.append(get_tweet_tokens(users_tweets[i]['text']))
+    return users, users_tokens
 
 TRAINING_SET_URL = "twitter_train.txt"
 df_users = pd.read_csv(TRAINING_SET_URL, sep=",", header=1, names=["user_id", "class"])
 print df_users.head()
-df_users = df_users[:3000]
+df_users = df_users[:10]
 
 print "Authentication.."
 
@@ -34,52 +116,8 @@ api = twitter.Api(consumer_key=CONSUMER_KEY,
                   access_token_key=ACCESS_TOKEN_KEY,
                   access_token_secret=ACCESS_TOKEN_SECRET)
 
-print "Collecting data.."
+users, users_tokens = collect_users_tokens(df_users)
+print "Transforming to matrix.."
+v = DictVectorizer()
+#vs = v.fit_transform(users_tokens)
 
-def get_user_tweets(user_id):
-    """returns list of tweets as dicts"""
-    time = api.GetSleepTime("statuses/user_timeline")
-    statuses = api.GetUserTimeline()
-    dictionaries = []
-    for i in range(0,len(statuses)):
-        dictionaries.append(statuses[i].AsDict())
-    return [{'lang': u'en',
-             'favorited': False,
-             'truncated': False,
-             'text': u"So now I'm on the floor tweeting about it PROB w a black eye n swollen nose",
-             'created_at': u'Mon Apr 06 05:59:50 +0000 2015',
-             'retweeted': False,
-             'source': u'<a href="http://twitter.com/download/iphone" rel="nofollow">Twitter for iPhone</a>',
-             'user': {'id': 984121344},
-             'id': 584958674528964608}]
-
-def get_user_records(df):
-    user_records = []
-    for i in range(0, df.size/2/100):
-        print i, df.at[i, "user_id"]
-        #try:
-        users_list = []
-        for j in range(0,99):
-            if i*100+j >= df.size:
-                break
-            users_list.append(df.at[i*100+j,"user_id"])
-
-        user = api.UsersLookup(users_list)
-            #r = requests.get("https://api.twitter.com/1.1/users/lookup.json?user_id=601849857")
-            #user = api.GetUser(df.at[i, "user_id"])
-        #except:
-            #print i, " Some exeption"
-            #continue
-        for j in range(0,99):
-            if j >= len(user):
-                break
-            record = twitter_user_to_dataframe_record(user[j])
-            if record.has_key('lat') and record.has_key('lng'):
-                if record['lat'] is not None and record['lng'] is not None:
-                    print record['lat'], '  ', record['lng']
-                print i*100 +j, ' Added'
-            user_records.append(record)
-    return user_records
-
-
-user_records = get_user_records(df_users)
