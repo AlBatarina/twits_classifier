@@ -9,13 +9,8 @@ import time
 import cPickle as pck
 import numpy as np
 import pylab as pl
-import mpl_toolkits.basemap as bm
 import twitter
 import requests
-import datetime
-import dateutil
-import csv
-import json
 import matplotlib.pyplot as plt
 from collections import defaultdict
 from nltk.corpus import stopwords
@@ -24,6 +19,7 @@ from nltk.stem.wordnet import WordNetLemmatizer
 from nltk.tokenize import RegexpTokenizer
 from sklearn.feature_extraction import DictVectorizer
 import nltk
+import random as rnd
 
 def get_user_tweets(user_id):
     """returns list of tweets as dicts"""
@@ -35,13 +31,14 @@ def get_user_tweets(user_id):
         statuses = api.GetUserTimeline(user_id, count=200)
     except:
         return None
-    print len(statuses)
     dictionaries = []
     for i in range(0,len(statuses)):
-        dict = statuses[i].AsDict()
-        if statuses[i].GetRetweeted() or statuses[i].GetInReplyToUserId() != None or dict['lang'] != 'en':
+        dict = statuses[i].AsDict() #statuses[i].GetRetweeted()
+        if  dict.has_key('retweeted_status') or statuses[i].GetInReplyToUserId() != None \
+                or dict['lang'] != 'en' or statuses[i].GetInReplyToStatusId() != None\
+                or dict['text'][0:3] == "RT ":
             continue
-            '''corpora/wordnet
+            '''
         for key in dict.keys():
             if key not in ['text', 'created_at', 'id']:
                 dict.pop(key)
@@ -54,9 +51,10 @@ def get_user_tweets(user_id):
 def get_words(text):
     """returns list of words"""
     print text
-    refs = re.findall('http://\S*', text)
+    refs = re.findall('http\S*', text)
+    refs.extend(re.findall('#\S*', text))
+    refs.extend(re.findall('@\S*', text))
     for ref in refs:
-        print ref
         text = text.replace(ref,'')
     print text
     tokenizer = RegexpTokenizer('\w+')#|[^\w\s]+')
@@ -105,6 +103,7 @@ def collect_users_tokens(df_users):
     for i in range(0, len(users_tweets)):
         tokens = []
         for j in range(0, len(users_tweets[i])):
+            print users_tweets[i][j]
             tokens.extend(get_tweet_tokens(users_tweets[i][j]['text']))
         tokenDict = dict((x, tokens.count(x)) for x in set(tokens))
         print tokenDict
@@ -135,3 +134,29 @@ print "Transforming to matrix.."
 v = DictVectorizer()
 vs = v.fit_transform(users_tokens)
 
+np.savez("TokensMatrix", data=vs, users=users, users_tokens=users_tokens )
+
+def draw_tag_cloud(v, vs):
+    """Draws tag cloud of found tokens"""
+    tagsNumb = 50
+    tokenFrequency = np.sum(vs.toarray(), axis=0)
+    print tokenFrequency
+    indexPopular = np.argsort(tokenFrequency)[len(tokenFrequency)-tagsNumb:]
+    tokenPopular = np.take(tokenFrequency, indexPopular)
+    print tokenPopular
+    maxFreq = np.max(tokenPopular)
+    minFreq = np.min(tokenPopular)
+    print maxFreq, minFreq
+    pl.figure(figsize=(20,12))
+    rnd.seed()
+    colors = ['b','g','r','k']
+    for i in range(len(indexPopular)-1, -1, -1):
+        print i
+        r = (maxFreq-tokenFrequency[indexPopular[i]])/(maxFreq-minFreq)
+        alpha = np.pi/2/tagsNumb*i
+        print 'alpha', alpha
+        pl.text(r*np.cos(alpha), r*np.sin(alpha), v.get_feature_names()[indexPopular[i]], {'color' : colors[rnd.randint(0,3)], 'fontsize' : 15/(r+1)} )
+    pl.show()
+    return
+
+draw_tag_cloud(v,vs)
