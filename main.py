@@ -23,14 +23,15 @@ import random as rnd
 
 def get_user_tweets(user_id):
     """returns list of tweets as dicts"""
-    waitTime = api.GetSleepTime("statuses/user_timeline")
-    if waitTime != 0:
-        print "Waiting ", waitTime, "seconds"
-    time.sleep(waitTime)
     try:
         statuses = api.GetUserTimeline(user_id, count=200)
     except:
-        return None
+        waitTime = api.GetSleepTime("statuses/user_timeline")
+        if waitTime == 0:
+            return None
+        print "Waiting ", waitTime, "seconds"
+        time.sleep(waitTime)
+        statuses = api.GetUserTimeline(user_id, count=200)
     dictionaries = []
     for i in range(0,len(statuses)):
         dict = statuses[i].AsDict() #statuses[i].GetRetweeted()
@@ -38,11 +39,11 @@ def get_user_tweets(user_id):
                 or dict['lang'] != 'en' or statuses[i].GetInReplyToStatusId() != None\
                 or dict['text'][0:3] == "RT ":
             continue
-            '''
+
         for key in dict.keys():
             if key not in ['text', 'created_at', 'id']:
                 dict.pop(key)
-            '''
+
         dictionaries.append(dict)
     if len(dict) == 0:
         return None
@@ -50,13 +51,13 @@ def get_user_tweets(user_id):
 
 def get_words(text):
     """returns list of words"""
-    print text
     refs = re.findall('http\S*', text)
     refs.extend(re.findall('#\S*', text))
     refs.extend(re.findall('@\S*', text))
+    refs.extend(re.findall('\s\d+', text))
+    refs.extend(re.findall('\d+\s', text))
     for ref in refs:
         text = text.replace(ref,'')
-    print text
     tokenizer = RegexpTokenizer('\w+')#|[^\w\s]+')
     return tokenizer.tokenize(text)
 
@@ -67,8 +68,10 @@ def get_tokens(words):
         words[i] = words[i].lower()
         words[i] = re.sub(ur"\W", "", words[i], flags=re.U)
         wnl.lemmatize(words[i])
-    tokens = [i for i in words if i not in stopwords.words('english')]
-    print tokens
+    stpwrd = stopwords.words('english')
+    stpwrd.extend(['m','re','o','d','vs','w','3','2','rt'])
+    tokens = [i for i in words if i not in stpwrd]
+    #print tokens
     return tokens
 
 def get_tweet_tokens(tweet):
@@ -85,13 +88,12 @@ def collect_users_tokens(df_users):
         if dictList is not None:
             users.append(df_users.at[i, 'user_id'])
             users_tweets.append(dictList)
-    print users_tweets[0]
-    '''
+
     print "Saving dictionaries.."
     tweets = open("./tweets", 'w')
     pck.dump(users_tweets,tweets)
     tweets.close()
-
+    '''
     print "Opening dictionaries.."
     raw_input()
     tweets = open("./tweets", 'r')
@@ -99,22 +101,20 @@ def collect_users_tokens(df_users):
     tweets.close()
     '''
     users_tokens = []
-    #nltk.download_shell('q')
+    #nltk.download()
     for i in range(0, len(users_tweets)):
         tokens = []
         for j in range(0, len(users_tweets[i])):
-            print users_tweets[i][j]
+            #print users_tweets[i][j]
             tokens.extend(get_tweet_tokens(users_tweets[i][j]['text']))
         tokenDict = dict((x, tokens.count(x)) for x in set(tokens))
-        print tokenDict
         users_tokens.append(tokenDict)
-
     return users, users_tokens
 
 TRAINING_SET_URL = "twitter_train.txt"
 df_users = pd.read_csv(TRAINING_SET_URL, sep=",", header=1, names=["user_id", "class"])
 print df_users.head()
-df_users = df_users[:10]
+df_users = df_users[:300]
 
 print "Authentication.."
 
@@ -138,7 +138,7 @@ np.savez("TokensMatrix", data=vs, users=users, users_tokens=users_tokens )
 
 def draw_tag_cloud(v, vs):
     """Draws tag cloud of found tokens"""
-    tagsNumb = 50
+    tagsNumb = 100
     tokenFrequency = np.sum(vs.toarray(), axis=0)
     print tokenFrequency
     indexPopular = np.argsort(tokenFrequency)[len(tokenFrequency)-tagsNumb:]
@@ -147,15 +147,18 @@ def draw_tag_cloud(v, vs):
     maxFreq = np.max(tokenPopular)
     minFreq = np.min(tokenPopular)
     print maxFreq, minFreq
-    pl.figure(figsize=(20,12))
+    pl.figure(figsize=(30,30))
     rnd.seed()
-    colors = ['b','g','r','k']
+    colors = ['b','g','r','k','y','c','m']
     for i in range(len(indexPopular)-1, -1, -1):
         print i
-        r = (maxFreq-tokenFrequency[indexPopular[i]])/(maxFreq-minFreq)
-        alpha = np.pi/2/tagsNumb*i
+        size = 30/((maxFreq-tokenFrequency[indexPopular[i]])/(maxFreq-minFreq)+1)
+        n = 295
+        alpha = n*np.pi/tagsNumb*(tagsNumb-i)
+        r = np.log(np.log(float(tagsNumb-i)/tagsNumb/2 + 1) + 1) + 0.13
         print 'alpha', alpha
-        pl.text(r*np.cos(alpha), r*np.sin(alpha), v.get_feature_names()[indexPopular[i]], {'color' : colors[rnd.randint(0,3)], 'fontsize' : 15/(r+1)} )
+        pl.text(0.5+r*np.cos(alpha), 0.5+r*np.sin(alpha), v.get_feature_names()[indexPopular[i]],
+                {'color' : colors[i%len(colors)], 'fontsize' : size} )
     pl.show()
     return
 
