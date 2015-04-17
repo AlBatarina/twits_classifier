@@ -40,13 +40,11 @@ def get_user_tweets(user_id):
                 or dict['lang'] != 'en' or statuses[i].GetInReplyToStatusId() != None\
                 or dict['text'][0:3] == "RT ":
             continue
-
         for key in dict.keys():
             if key not in ['text', 'created_at', 'id']:
                 dict.pop(key)
-
         dictionaries.append(dict)
-    if len(dict) == 0:
+    if len(dictionaries) == 0:
         return None
     return dictionaries
 
@@ -70,7 +68,7 @@ def get_tokens(words):
         words[i] = re.sub(ur"\W", "", words[i], flags=re.U)
         wnl.lemmatize(words[i])
     stpwrd = stopwords.words('english')
-    stpwrd.extend(['m','re','o','d','vs','w','3','2','rt','u','ll'])
+    stpwrd.extend(['m','re','o','d','vs','w','3','2','rt','u','ll','ve'])
     tokens = [i for i in words if i not in stpwrd]
     #print tokens
     return tokens
@@ -80,7 +78,7 @@ def get_tweet_tokens(tweet):
 
 def collect_users_tokens(df_users):
     """returns users list and list of user dicts. Each dict contains frequence of user tokens"""
-
+    '''
     print "Collecting data.."
     users_tweets = []
     users = []
@@ -92,7 +90,7 @@ def collect_users_tokens(df_users):
             users_tweets.append(dictList)
 
     print "Saving dictionaries.."
-    tweets = open("./tweets", 'w')
+    tweets = open("./tweets_short", 'w')
     pck.dump(users_tweets,tweets)
     tweets.close()
     usrs = open("./users", 'w')
@@ -107,7 +105,7 @@ def collect_users_tokens(df_users):
     usrs = open("./users", 'r')
     users = pck.load(usrs)
     usrs.close()
-    '''
+
     users_tokens = []
     #nltk.download()
     for i in range(0, len(users_tweets)):
@@ -122,7 +120,6 @@ def collect_users_tokens(df_users):
 TRAINING_SET_URL = "twitter_train.txt"
 df_users = pd.read_csv(TRAINING_SET_URL, sep=",", header=1, names=["user_id", "class"])
 print df_users.head()
-#df_users = df_users[:300]
 
 print "Authentication.."
 
