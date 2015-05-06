@@ -13,6 +13,12 @@ import sklearn.metrics as sm
 import cPickle as pck
 import scipy.sparse as spr
 import matplotlib.axes as ax
+from scipy.interpolate import interp1d
+from scipy.integrate import trapz
+from numpy.linalg import norm
+
+#import parser
+#print parser.__file__
 
 data = np.load("TokensMatrix.npz")
 #users = data["users"]
@@ -84,6 +90,7 @@ X1 = pck.load(popular_tokens)
 popular_tokens.close()
 
 X1 = X1.toarray()
+print X1.shape
 
 USER_NAME = "al.batarina"
 OPTIMIZATION_ALGORITHMS = ["stochastic gradient descent", "Newton method"]
@@ -100,56 +107,73 @@ class LogisticRegression():
         self.w = None
 
     def fit(self, X, Y=None):
-
-
-
+        w0 = np.zeros(X.shape[1])
+        eps = 1
+        self.w = self.grad_optimize(w0, X, Y, eps)
         return self
 
     def predict_proba(self, X):
-        if self.w == None:
-            return None
-        return self.w*X
+        return np.dot(X,self.w)
+        #import numpy.random as nr
+        #return nr.random(X.shape[0])
+
+    def sigma(self, a):
+        return 1 - 1/(1+np.exp(a))
+
+    def grad_err(self, w, X, Y):
+        result = 0
+        for i in range(0,X.shape[0]):
+            y = self.sigma(np.dot(w, X[i]))
+            t = Y[i]
+            result += np.dot(y-t, X[i])
+        result += self.C*norm(w, 1)
+        return result
+
+    def grad_optimize(self, w0, X, Y, eps):
+        k = 0
+        w = w0
+        while True:
+            k = k + 1
+            print k
+            delta = -1/k/k*self.grad_err(w, X, Y)
+            w = w + delta
+            print norm(delta, 2)
+            if norm(delta, 2) < eps:
+                break
+        return w
 
 def auroc(y_prob, y_true):
     threshold = np.linspace(0, 1, 10)
+    tpr = np.empty_like(threshold)
+    fpr = np.empty_like(threshold)
     for i in range(0,len(threshold)):
         predicted = np.empty_like(y_prob)
         for j in range(0,y_prob.shape[0]):
-            if y_prob[j] >= threshold[i]:
-                predicted[j] = 1
-            else:
-                predicted[j] = 0
+            predicted[j] = int(y_prob[j] >= threshold[i])
+        a = np.extract(y_true == 1, predicted-y_true)
+        tpr[i] = float(a.shape[0] - np.count_nonzero(a))/np.count_nonzero(y_true)
+        b = np.extract(y_true == 0, predicted-y_true)
+        fpr[i] = np.count_nonzero(b)/float(y_true.shape[0]-np.count_nonzero(y_true))
+    #roc = interp1d(fpr, tpr, kind='linear')
+    roc_auc = trapz(tpr, fpr)
+    return tpr, fpr, roc_auc
 
 
-def grad_err(a):
-    pass
-
-def gd(a0, epsilon):
-    k = 0
-    a = a0
-    while True:
-        k = k + 1
-        delta = -1/k*grad_err(a)
-        a = a + delta
-        if np.norm(delta) < epsilon:
-            break
-    return a
 
 C = [0.0, 0.01, 0.1, 1, 10, 100, 1000, 10000]
 
 def select_reg_parameter(C, X, Y):
-    skf = cv.cross_validation.StratifiedKFold(X)
-    tpr = []
-    fpr = []
-    for c in C:
-        LR = LogisticRegression(c)
-        for train_index, test_index in skf:
-            LR.fit(X[train_index],Y)
-            classes = LR.predict(X[test_index])
-            tpri, fpri = tprfpr(classes, Y)
-            tpr.append(tpri)
-            fpr.append(fpri)
-    return C.index(max(C))
+    #skf = cv.StratifiedKFold(X)
+    roc_auc = np.empty_like(C)
+    nsplit = 3
+    train_size = X.shape[0]*(nsplit-1)/nsplit
+    for i in range(0,len(C)):
+        LR = LogisticRegression(C[i])
+        #for train_index, test_index in skf:
+        LR.fit(X[:train_size],Y[:train_size])
+        y_prob = LR.predict_proba(X[train_size:])
+        tpr, fpr, roc_auc[i] = auroc(y_prob,Y[train_size:])
+    return np.argmax(roc_auc)
 
 index = select_reg_parameter(C, X1, Y)
 print index
@@ -159,27 +183,31 @@ def classify(X, Y, nsplit, c):
     LR = LogisticRegression(c)
     LR.fit(X[:train_size],Y[:train_size])
     y_prob = LR.predict_proba(X[train_size:])
-    return LR.auroc(y_prob, Y[train_size:])
+    return auroc(y_prob, Y[train_size:])
 
 def plot_roc_curve(tpr, fpr, roc_auc):
     """Plot ROC curve"""
-
-    # Your code here
-
+    roc = interp1d(fpr, tpr, kind='linear')
+    pl.figure(figsize=(30,30))
+    pl.title("ROC curve")
+    pl.xlabel('fpr', size = 12)
+    pl.ylabel('tpr', size = 12)
+    x = np.linspace(0, 1, 10)
+    pl.plot(x, roc(x))
+    pl.show()
     return
 
 TRAINING_SET_URL = "twitter_test.txt"
 df_users = pd.read_csv(TRAINING_SET_URL, sep=",", header=0, names=["user_id", "class"], dtype={"user_id": str, "class": str})
 df_users.set_index("user_id", inplace=True)
 
+tpr, fpr, roc_auc = classify(X1, Y, 3, C[index])
+print "Area under the ROC curve : %f" % roc_auc
+plot_roc_curve(tpr, fpr, roc_auc)
+
 data = np.load("TokensMatrixTest.npz")
 usrs = open("./users_test", 'r')
 users = np.array(pck.load(usrs))
 usrs.close()
 X = data["data"].reshape(1,)[0]
-
-tpr, fpr, roc_auc = classify(X1, Y, 3, C[index])
-print "Area under the ROC curve : %f" % roc_auc
-plot_roc_curve(tpr, fpr, roc_auc)
-
 
