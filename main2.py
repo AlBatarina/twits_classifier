@@ -16,6 +16,7 @@ import matplotlib.axes as ax
 from scipy.interpolate import interp1d
 from scipy.integrate import trapz
 from numpy.linalg import norm
+from math import exp
 
 #import parser
 #print parser.__file__
@@ -107,7 +108,7 @@ class LogisticRegression():
         self.w = None
 
     def fit(self, X, Y=None):
-        w0 = np.zeros(X.shape[1])
+        w0 = np.full(X.shape[1],0.1)
         eps = 1
         self.w = self.grad_optimize(w0, X, Y, eps)
         return self
@@ -118,7 +119,11 @@ class LogisticRegression():
         #return nr.random(X.shape[0])
 
     def sigma(self, a):
-        return 1 - 1/(1+np.exp(a))
+        #print 'a', a
+        #print 1 - 1/float(1+exp(a))
+        if a > 33:
+            return 1
+        return 1 - 1/float(1+exp(a))
 
     def grad_err(self, w, X, Y):
         result = 0
@@ -126,18 +131,19 @@ class LogisticRegression():
             y = self.sigma(np.dot(w, X[i]))
             t = Y[i]
             result += np.dot(y-t, X[i])
-        result += self.C*norm(w, 1)
+        result += self.C*np.sign(w)
         return result
 
     def grad_optimize(self, w0, X, Y, eps):
-        k = 0
+        k = 20
         w = w0
         while True:
             k = k + 1
             print k
-            delta = -1/k/k*self.grad_err(w, X, Y)
+            delta = -1*self.grad_err(w, X, Y)/k/k/k
             w = w + delta
-            print norm(delta, 2)
+            print 'w ', w
+            print 'norm ',norm(delta, 2)
             if norm(delta, 2) < eps:
                 break
         return w
@@ -146,7 +152,8 @@ def auroc(y_prob, y_true):
     threshold = np.linspace(0, 1, 10)
     tpr = np.empty_like(threshold)
     fpr = np.empty_like(threshold)
-    for i in range(0,len(threshold)):
+    for i in range(len(threshold)-1,-1,-1):
+        print threshold[i]
         predicted = np.empty_like(y_prob)
         for j in range(0,y_prob.shape[0]):
             predicted[j] = int(y_prob[j] >= threshold[i])
@@ -156,6 +163,9 @@ def auroc(y_prob, y_true):
         fpr[i] = np.count_nonzero(b)/float(y_true.shape[0]-np.count_nonzero(y_true))
     #roc = interp1d(fpr, tpr, kind='linear')
     roc_auc = trapz(tpr, fpr)
+    print 'tpr', tpr
+    print 'fpr', fpr
+    print 'roc_auc', roc_auc
     return tpr, fpr, roc_auc
 
 
@@ -167,7 +177,7 @@ def select_reg_parameter(C, X, Y):
     roc_auc = np.empty_like(C)
     nsplit = 3
     train_size = X.shape[0]*(nsplit-1)/nsplit
-    for i in range(0,len(C)):
+    for i in range(4,5):
         LR = LogisticRegression(C[i])
         #for train_index, test_index in skf:
         LR.fit(X[:train_size],Y[:train_size])
@@ -176,7 +186,7 @@ def select_reg_parameter(C, X, Y):
     return np.argmax(roc_auc)
 
 index = select_reg_parameter(C, X1, Y)
-print index
+print 'Regularisation parameter is ', C[index]
 
 def classify(X, Y, nsplit, c):
     train_size = X.shape[0]*(nsplit-1)/nsplit
