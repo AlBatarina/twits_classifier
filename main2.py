@@ -76,26 +76,30 @@ def select_popular(X, users_tokens, min_users_count = X.shape[0]/700):
     return X[:,col_indices], users_tokens[col_indices]
 
 #draw_log_hist(X[:500])
-
+'''
 usrtck = open("./users_tokens", 'r')
 users_tokens = pck.load(usrtck)
 usrtck.close()
-print users_tokens
 users_tokens = np.array(users_tokens)
-
-#X1, users_tokens = select_popular(X, users_tokens, 2)
+'''
+#X, users_tokens = select_popular(X, users_tokens, 2)
 '''
 popular_tokens = open("./popular_tokens", 'w')
-pck.dump(X1,popular_tokens)
+pck.dump(X,popular_tokens)
 popular_tokens.close()
 '''
 popular_tokens = open("./popular_tokens", 'r')
-X1 = pck.load(popular_tokens)
+X = pck.load(popular_tokens)
 popular_tokens.close()
-print X1.shape
 
-usrtck = open("./tokens_selected", 'w')
-users_tokens = pck.dump(usrtck)
+print X.shape
+'''
+usrtck = open("./popular_tokens_list", 'w')
+pck.dump(users_tokens, usrtck)
+usrtck.close()
+'''
+usrtck = open("./popular_tokens_list", 'r')
+users_tokens = pck.load(usrtck)
 usrtck.close()
 
 def find_correlated_features(X, Y, users_tokens = []):
@@ -110,19 +114,30 @@ def find_correlated_features(X, Y, users_tokens = []):
         cov = np.cov(a)
         corr = cov[0,1]/np.sqrt(cov[0,0]*cov[1,1])
         #print corr
-        if abs(corr) >= 0.1:
+        if abs(corr) >= 0.04:
             print "Correlated feature: %s -> %.2f" % (users_tokens[j], corr)
             columns.append(j)
     return X1[:,columns], users_tokens[columns]
 
-X1, users_tokens = find_correlated_features(X1, Y, users_tokens)
-print X1.shape
-X1 = X1.toarray()
-'''
+X, users_tokens = find_correlated_features(X, Y, users_tokens)
+print X.shape
+
+def extract_selected(X, tokens, tokens_selected):
+    columns = []
+    for j in range(0, X.shape[0]):
+        if tokens[j] in tokens_selected:
+            columns.append(j)
+    return X[:,columns]
+
+#tokens_selected = ['bit','game','gaming','gamers','launch','play','player', 'playing', 'release','series', 'stream', 'trailer', 'update', 'homework', 'love']
+#X = extract_selected(X, users_tokens, tokens_selected)
+X = X.toarray()
+print 'X selected', X.shape
+
 usrtck = open("./tokens_selected", 'w')
 pck.dump(users_tokens, usrtck)
 usrtck.close()
-'''
+
 USER_NAME = "al.batarina"
 OPTIMIZATION_ALGORITHMS = ["stochastic gradient descent", "Newton method"]
 REGULARIZATIONS = ["L1", "L2"]
@@ -173,11 +188,11 @@ class LogisticRegression():
         w = w0
         while True:
             k = k + 1
-            print k
+            #print k
             delta = -1*self.grad_err(w, X, Y)/k/k/k
             w = w + delta
             #print 'w ', w
-            print 'norm ',norm(delta, 2)
+            #print 'norm ',norm(delta, 2)
             if norm(delta, 2) < eps:
                 break
         return w
@@ -190,7 +205,7 @@ def auroc(y_prob, y_true):
     tpr = np.empty_like(threshold)
     fpr = np.empty_like(threshold)
     for i in range(0, len(threshold)):
-        print threshold[i]
+        #print threshold[i]
         predicted = np.empty_like(y_prob)
         for j in range(0,y_prob.shape[0]):
             if threshold[len(threshold)-1-i] != 1:
@@ -203,9 +218,9 @@ def auroc(y_prob, y_true):
         fpr[i] = np.count_nonzero(b)/float(y_true.shape[0]-np.count_nonzero(y_true))
     #roc = interp1d(fpr, tpr, kind='linear')
     roc_auc = trapz(tpr, fpr)
-    print 'tpr', tpr
-    print 'fpr', fpr
-    print 'roc_auc', roc_auc
+    #print 'tpr', tpr
+    #print 'fpr', fpr
+    #print 'roc_auc', roc_auc
     return tpr, fpr, roc_auc
 
 
@@ -222,12 +237,12 @@ def select_reg_parameter(C, X, Y):
         #for train_index, test_index in skf:
         LR.fit(X[:train_size],Y[:train_size])
         y_prob = LR.predict_proba(X[train_size:])
-        print 'y_prob', y_prob
+        #print 'y_prob', y_prob
         tpr, fpr, roc_auc[i] = auroc(y_prob,Y[train_size:])
     return np.argmax(roc_auc)
 
 index = 4
-index = select_reg_parameter(C, X1, Y)
+index = select_reg_parameter(C, X, Y)
 print 'Regularisation parameter is ', C[index]
 
 def classify(X, Y, nsplit, c):
@@ -235,8 +250,11 @@ def classify(X, Y, nsplit, c):
     LR = LogisticRegression(c)
     LR.fit(X[:train_size],Y[:train_size])
     y_prob = LR.predict_proba(X[train_size:])
-    print y_prob
-    return auroc(y_prob, Y[train_size:])
+    #print y_prob
+    tpr, fpr, roc_auc = auroc(y_prob, Y[train_size:])
+    print "Area under the ROC curve : %f" % roc_auc
+    #plot_roc_curve(tpr, fpr, roc_auc)
+    return LR
 
 def plot_roc_curve(tpr, fpr, roc_auc):
     """Plot ROC curve"""
@@ -251,9 +269,7 @@ def plot_roc_curve(tpr, fpr, roc_auc):
     return
 
 
-tpr, fpr, roc_auc = classify(X1, Y, 3, C[index])
-print "Area under the ROC curve : %f" % roc_auc
-plot_roc_curve(tpr, fpr, roc_auc)
+LR = classify(X, Y, 3, C[index])
 
 TRAINING_SET_URL = "twitter_test.txt"
 df_users = pd.read_csv(TRAINING_SET_URL, sep=",", header=0, names=["user_id", "class"], dtype={"user_id": str, "class": str})
@@ -264,3 +280,17 @@ usrs = open("./users_test", 'r')
 users = np.array(pck.load(usrs))
 usrs.close()
 X = data["data"].reshape(1,)[0]
+
+tktst = open("./users_tokens_test", 'r')
+tokens_test = pck.load(tktst)
+tktst.close()
+
+X = extract_selected(X, tokens_test, users_tokens)
+print 'X selected', X.shape
+X = X.toarray()
+
+test_proba = LR.predict_proba(X)
+
+df_out = pd.DataFrame(data=test_proba, index=users, columns=["proba"])
+df_out.to_csv("twitter_test_predicted", sep="\t")
+
