@@ -17,6 +17,7 @@ from scipy.interpolate import interp1d
 from scipy.integrate import trapz
 from numpy.linalg import norm
 from math import exp
+from scipy.sparse import csc_matrix, hstack
 
 #import parser
 #print parser.__file__
@@ -124,9 +125,15 @@ print X.shape
 
 def extract_selected(X, tokens, tokens_selected):
     columns = []
-    for j in range(0, X.shape[0]):
-        if tokens[j] in tokens_selected:
-            columns.append(j)
+    tokens = np.array(tokens)
+    X = X.tocsc()
+    X = hstack([X,csc_matrix(np.zeros((X.shape[0],1)))])
+    for j in range(0, tokens_selected.shape[0]):
+        arr, = np.where(tokens == tokens_selected[j])
+        if arr.shape[0] != 0:
+            columns.append(arr[0])
+        else:
+            columns.append(X.shape[1]-1)
     return X[:,columns]
 
 #tokens_selected = ['bit','game','gaming','gamers','launch','play','player', 'playing', 'release','series', 'stream', 'trailer', 'update', 'homework', 'love']
@@ -224,7 +231,6 @@ def auroc(y_prob, y_true):
     return tpr, fpr, roc_auc
 
 
-
 C = [0.0, 0.01, 0.1, 1, 10, 100, 1000, 10000]
 
 def select_reg_parameter(C, X, Y):
@@ -291,6 +297,6 @@ X = X.toarray()
 
 test_proba = LR.predict_proba(X)
 
-df_out = pd.DataFrame(data=test_proba, index=users, columns=["proba"])
-df_out.to_csv("twitter_test_predicted", sep="\t")
+df_out = pd.DataFrame(data=test_proba, index=users, columns=["Id","Prediction"])
+df_out.to_csv("twitter_test_predicted", sep=",")
 
